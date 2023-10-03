@@ -1,104 +1,139 @@
 import re
+import datetime
+from datetime import datetime as dt
+import matplotlib.pyplot as plt
+from collections import Counter
 
-# step 1
 
+# ***************************************************
+# *** create a datetime object to record the date ***
+# ***************************************************
+current_time = datetime.datetime.now()
+current_time_str = current_time.strftime("%b %d %H:%M:%S")
+print("\n*** program start time:", current_time_str, "******")
+
+
+# ***************************************************
+# ******** open file one log line at a time *********
+# ***************************************************
 def openLogFile(path):
     with open(path) as log_file:
         for log_entry in log_file:
             yield log_entry
 
+# Initialize a count for the total number of entries
+total_entries_count = 0
 
-log_file = openLogFile("part2.log")
-log_entry = next(log_file)
-# print("log entry:", log_entry)
+# Create a list to store log entries as dictionaries
+log_entries = []
 
-# Step 3: Define the logParser function
-def logParser(log):
-    # log_data = log_entry.split("\t")  # Split the log entry using "\t"
-    # print( log_data)
-    # print("log_data[1]:", log_data[1])
-    # Now you can process log_data as needed
+# ***************************************************
+# *** Define a function to parse the log entries  ***
+# ***************************************************
+path = "part2.log"
+log_file = openLogFile(path) # Read and parse log entries into dictionaries
 
-    log_data = re.split("\t", log_entry.rstrip())
-    print("log_data:", log_data)
-    # print("\n log_data[0]:",log_data[0])
-    # r = {}
-    
-logParser(log_entry)
+for log_entry in log_file:
+    total_entries_count += 1  # Increment the count for each entry
 
+    # Define regex pattern to extract log entry fields
+    pattern = r'(\w{3} \d{1,2} \d{2}:\d{2}:\d{2}) (\w+) (\w+)\((\w+)\)\[(\d+)\]: (.+)'
 
-# import re
+    # Use re.match to extract fields from the log entry
+    match = re.match(pattern, log_entry)
 
-# def parseZeekConn(log_entry):
-#     log_data = re.split("\t", log_entry.rstrip())
-#     print(log_data)
-#     r = {}
-#     r["ts"] = log_data[0]
-#     r["uid"] = log_data[1]
-#     r["src_ip"] = log_data[2]
-#     r["src_port"] = log_data[3]
-#     r["dst_ip"] = log_data[4]
-#     r["dst_port"] = log_data[5]
-#     r["proto"] = log_data[6]
-#     r["service"] = log_data[7]
-#     r["duration"] = log_data[8]
-#     r["src_bytes"] = log_data[9]
-#     r["dst_bytes"] = log_data[10]
-#     r["conn_state"] = log_data[11]
-#     r["local_src"] = log_data[12]
-#     r["local_rsp"] = log_data[13]
-#     r["missed_bytes"] = log_data[14]
-#     r["history"] = log_data[15]
-#     r["srk_pkts"] = log_data[16]
-#     r["src_ip_bytes"] = log_data[17]
-#     r["dst_pkts"] = log_data[18]
-#     r["dst_ip_bytes"] = log_data[19]
-#     r["tunnel_parents"] = log_data[20]
-#     return r
+    if match:
+        timestamp, hostname, component, action, pid, message = match.groups()
+        log_entry_dict = {
+            "original_timestamp": timestamp,
+            "current_timestamp": current_time_str,
+            "hostname": hostname,
+            "component": component,
+            "action": action,
+            "pid": pid,
+            "message": message
+        }
+        log_entries.append(log_entry_dict)
 
 
+# ***************************************************
+# ****** Get the top 3 most common components *******
+# ***************************************************
+# Count the occurrences of 'component' components
+component_counter = Counter(entry['component'] for entry in log_entries)
 
-# log_list = []
-# log_list.append(next(log_file))
-# print("log_list:", log_list)
-
-# log parser function 
-
-# def logParser(file):
-#     log_data = re.split("\t", log_list.rstrip())
-#     print("logdata:",log_data)
-#     # r = {}
-#     # r["ts"] = log_data[0]
-#     # return r
-
-# logParser(log_list)
+# Find the top 3 most common 'component' components
+top_3_components = component_counter.most_common(3)
 
 
+# parsing time for working hours vs after hours
+def parse_log_entry(log_entry):
+    pattern = r'(\w{3} \d{1,2} \d{2}:\d{2}:\d{2}) (\w+) (\w+)\((\w+)\)\[(\d+)\]: (.+)'
+    match = re.match(pattern, log_entry)
+    if match:
+        timestamp, hostname, component, action, pid, message = match.groups()
+        return {
+            "original_timestamp": timestamp,
+            "component": component,
+        }
+    else:
+        return None
+
+# Define a function to classify time as working hours or after hours
+def classify_time(timestamp):
+    hour = timestamp.hour
+    if 9 <= hour <= 17:
+        return "Working Hours"
+    else:
+        return "After Hours"
+
+# ***************************************************
+# *****************  Create a plot  *****************
+# ***************************************************
+def plot_component_usage(log_entries):
+    component_counter = Counter(entry['component'] for entry in log_entries)
+    working_hours_counter = Counter()
+    after_hours_counter = Counter()
+
+    for entry in log_entries:
+        timestamp = datetime.datetime.strptime(entry["original_timestamp"], "%b %d %H:%M:%S")
+        time_category = classify_time(timestamp)
+        component = entry["component"]
+
+        if time_category == "Working Hours":
+            working_hours_counter.update([component])
+        else:
+            after_hours_counter.update([component])
+
+    top_3_components = component_counter.most_common(3)
+   
+    plt.figure(figsize=(12, 6))
+
+    for i, (component, count) in enumerate(top_3_components, 1):
+        plt.subplot(3, 1, i)
+        plt.bar(
+            [f"{component} - Working Hours ( {working_hours_counter[component]})", f"{component} - After Hours ({after_hours_counter[component]})"],
+            [working_hours_counter[component], after_hours_counter[component]]
+        )
+        plt.title(f"Usage of {component} component during Working Hours and After Hours")
+        plt.ylim(0, 300)  # Set the y-axis limits to 0-300
+
+    plt.tight_layout()
+    plt.show()
 
 
+# ***************************************************
+# *********************  print  *********************
+# ***************************************************
+print("\n\n* * * * * * * LOG FILE ANALYZER * * * * * * *\n\n")
+print(f"for filename {path}")
+print("Total number of log entries:", total_entries_count,"\n")
+print("Top 3 most common components:")
+for component, count in top_3_components:
+    print(f"Component: {component}, Count: {count}")
+print("\nSee visualized data in external Python window\n\n*** program end time:", current_time_str,"********")
+
+# Call the function to create and display the plot
+plot_component_usage(log_entries)
 
 
-
-
-
-
-
-
-
-
-
-
-
-# step 2
-# def parseLogEntry(log_entry):
-#     log_data = re.split("\t", log_entry.rstrip())
-#     print("parseLogEntry log_data:", log_data)
-#     r = {}
-#     r["ts"] = log_data[0]
-#     r["level"] = log_data[1]
-#     r["comp"] = log_data[2]
-#     r["content"] = log_data[3]
-#     r["rhost"] = log_data[4]
-#     return r
-
-# parseLogEntry(demo_log_file)
